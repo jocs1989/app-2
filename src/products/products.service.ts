@@ -1,89 +1,76 @@
-import { uuid } from 'uuidv4';
+import { Repository } from 'typeorm';
 
-import { faker } from '@faker-js/faker';
-import { Injectable, NotFoundException, OnApplicationBootstrap } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
 
 import { CreateProductDto } from './dto/create-product.dto';
+import { ImagesDto } from './dto/images-products.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
-import { Product } from './interface/products.interface';
+import { ImagesProducts } from './entities/images.entity';
+import { Product } from './entities/product.entity';
 
 @Injectable()
-export class ProductsService implements OnApplicationBootstrap {
-  private static intance: ProductsService;
-  private products: Product[];
-  private newProduct: Product = {
-    id: uuid(),
-    name: '',
-    description: '',
-    price: 0,
-  };
+export class ProductsService {
+  constructor(
+    @InjectRepository(Product)
+    private productRepository: Repository<Product>,
+    @InjectRepository(ImagesProducts)
+    private imagesRepository: Repository<ImagesProducts>,
+  ) {}
 
-  constructor() {
-    if (!ProductsService.intance) {
-      ProductsService.intance = this;
-      this.products = [];
-    }
-    return ProductsService.intance;
-  }
-  onApplicationBootstrap() {
-    this.generateProducts();
-  }
+  async create(createProductDto: CreateProductDto) {
+    try {
+      const { images, ...otro } = createProductDto;
+      const newsImages = images.map((item) => {
+        const newItem = new ImagesProducts();
+        newItem.name = item.name;
+        newItem.url = item.url;
+        return newItem;
+      });
 
-  private generateProducts(): void {
-    for (let i = 0; i < 10; i++) {
-      const product: Product = {
-        id: uuid(),
-        name: faker.commerce.productName(),
-        description: faker.lorem.sentence(),
-        price: parseFloat(faker.commerce.price()),
-      };
-      this.products.push(product);
+      const newProduct = this.productRepository.create({
+        ...otro,
+        images: newsImages,
+      });
+
+      return await this.productRepository.save(newProduct);
+    } catch (err) {
+      const pgUniqueCiolationErrorCode = '23505';
+      if (err.code === pgUniqueCiolationErrorCode) {
+        throw new ConflictException('This product Exist');
+      }
     }
-  }
-  create(createProductDto: CreateProductDto) {
-    const modifiedProduct = { ...this.newProduct, ...createProductDto };
-    this.products.push(modifiedProduct);
-    return modifiedProduct;
   }
 
   findAll() {
-    return this.products;
+    return this.productRepository.find({
+      relations: { images: true },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        price: true,
+        review: true,
+        images: {
+          url: true,
+        },
+      },
+    });
   }
 
   findOne(id: string) {
-    const product =
-      this.products.filter((item) => item.id === id).length === 0
-        ? null
-        : this.products.filter((item) => item.id == id)[0];
-    if (!product) {
-      throw new NotFoundException('Product not Exist');
-    }
-    return product;
+    return this.productRepository.findOneBy({ id });
   }
 
-  update(id: string, updateProductDto: any) {
-    this.products = this.products.map((item) => {
-      if (item.id === id) {
-        return { ...item, ...updateProductDto };
-      } else {
-        return item;
-      }
+  async update(id: string, updateProductDto: UpdateProductDto) {
+    const oldProduct = await this.productRepository.preload({
+      id: id,
+      ...updateProductDto,
     });
-    const product = this.products.filter((item) => item.id === id);
-    const result = product.length === 0 ? null : product[0];
-    if (!result) {
-      throw new NotFoundException('Product not Exist');
-    }
-    return result;
+    return oldProduct;
   }
 
   remove(id: string) {
-    const index = this.products.findIndex((item) => item.id === id);
-    if (index === -1) {
-      throw new NotFoundException('Product not Exist');
-    }
-    const productClear = this.products.filter((item) => item.id === id)[0];
-    this.products.splice(index, 1);
-    return productClear;
+    return '';
   }
 }

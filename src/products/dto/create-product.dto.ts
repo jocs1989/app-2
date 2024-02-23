@@ -1,5 +1,9 @@
+import { ImagesDto } from './images-products.dto';
+
 export class CreateProductDto {
-  name: string;
-  description: string;
-  price: number;
+  readonly name: string;
+  readonly description: string;
+  readonly price: number;
+  readonly images: ImagesDto[];
+  readonly review: string;
 }
